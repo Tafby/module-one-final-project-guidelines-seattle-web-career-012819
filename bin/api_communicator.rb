@@ -3,40 +3,50 @@ require 'json'
 require 'pry'
 
 
-def get_pokemon_from_api
-seed_games
-response_string = RestClient.get('https://pokeapi.co/api/v2/pokemon/?limit=20')
-response_hash = JSON.parse(response_string)
-#Seeding Pokemon
-response_hash["results"].each do |pokemon|
+def get_pokemon_from_api(number)
+  seed_games
+  response_string = RestClient.get("https://pokeapi.co/api/v2/pokemon/?limit=#{number}")
+  response_hash = JSON.parse(response_string)
+  #Seeding Pokemon
+  response_hash["results"].each do |pokemon|
     pokemon_url_string = RestClient.get(pokemon["url"])
     pokemon_url_hash = JSON.parse(pokemon_url_string)
     #creating the pokemon object
-    if (pokemon_url_hash["types"].size == 1)
-      Pokemon.create(name: pokemon["name"].downcase, url: pokemon["url"], weight: pokemon_url_hash["weight"], height: pokemon_url_hash["height"], type1: pokemon_url_hash["types"][0]["type"]["name"], hp: pokemon_url_hash["stats"].last["base_stat"])
-    else
-      Pokemon.create(name: pokemon["name"].downcase, url: pokemon["url"], weight: pokemon_url_hash["weight"], height: pokemon_url_hash["height"], type1: pokemon_url_hash["types"][0]["type"]["name"], type2: pokemon_url_hash["types"][1]["type"]["name"], hp: pokemon_url_hash["stats"].last["base_stat"])
+    params_hash = {
+      name: pokemon["name"].downcase,
+      url: pokemon["url"],
+      weight: pokemon_url_hash["weight"],
+      height: pokemon_url_hash["height"],
+      type1: pokemon_url_hash["types"][0]["type"]["name"],
+      hp: pokemon_url_hash["stats"].last["base_stat"]
+    }
+    if (pokemon_url_hash["types"].size == 2)
+      params_hash["type2"] = pokemon_url_hash["types"][1]["type"]["name"]
     end
+    new_pokemon = Pokemon.find_or_create_by(params_hash)
     #creating the associations for the games
     pokemon_url_hash["game_indices"].each do |x|
-      PokemonGame.create(pokemon_id: Pokemon.last.id, game_id: Game.find_by(name: x["version"]["name"].downcase).id)
+      new_pokemon.games << Game.find_or_create_by(name: x["version"]["name"].downcase)
     end
     #creating the moves
     pokemon_url_hash["moves"].each do |m|
       name = m["move"]["name"]
       pokemon_move_string = RestClient.get(m["move"]["url"])
       pokemon_move_hash = JSON.parse(pokemon_move_string)
-      Move.create(name: name, accuracy: pokemon_move_hash["accuracy"], pp: pokemon_move_hash["pp"], damage: pokemon_move_hash["power"], move_type: pokemon_move_hash["type"]["name"] )
-      PokemonMove.create(pokemon_id: Pokemon.last.id, move_id: Move.last.id)
+      new_move = Move.find_or_create_by(
+        name: name,
+        accuracy: pokemon_move_hash["accuracy"],
+        pp: pokemon_move_hash["pp"],
+        damage: pokemon_move_hash["power"],
+        move_type: pokemon_move_hash["type"]["name"]
+      )
+      new_pokemon.moves << new_move
+    end # end of adding moves
 
-    end
-    #grabbing the default 4 moves per pokemon
-      Pokemon.all.last.update_attribute(:move1, Pokemon.all.last.moves.sample.id)
-      Pokemon.all.last.update_attribute(:move2, Pokemon.all.last.moves.sample.id)
-      Pokemon.all.last.update_attribute(:move3, Pokemon.all.last.moves.sample.id)
-      Pokemon.all.last.update_attribute(:move4, Pokemon.all.last.moves.sample.id)
-    end
-
+    # reduce down to the default 4 moves per pokemon
+    default_moves = new_pokemon.moves.sample(4)
+    new_pokemon.moves = default_moves
+  end # end of adding pokemon
 end
 
 
@@ -73,8 +83,24 @@ def seed_games
 end
 
 def seed_trainers
-Trainer.create(name: "Ash", flavor_text: "I'm having a major hat crisis!", p1: Pokemon.all.sample.id, p2: Pokemon.all.sample.id, p3: Pokemon.all.sample.id, p4: Pokemon.all.sample.id, p5: Pokemon.all.sample.id, p6: Pokemon.all.sample.id)
-Trainer.create(name: "Brock", flavor_text: "Hey! I know! I'll use my trusty frying pan as a drying pan!", p1: Pokemon.all.sample.id, p2: Pokemon.all.sample.id, p3: Pokemon.all.sample.id, p4: Pokemon.all.sample.id, p5: Pokemon.all.sample.id, p6: Pokemon.all.sample.id)
-Trainer.create(name: "Misty", flavor_text: "Pikachu! You're a Pika Pal!", p1: Pokemon.all.sample.id, p2: Pokemon.all.sample.id, p3: Pokemon.all.sample.id, p4: Pokemon.all.sample.id, p5: Pokemon.all.sample.id, p6: Pokemon.all.sample.id)
-Trainer.create(name: "Jessie + James", flavor_text: "Prepare for trouble! And make it double! To protect the world from devestation! To Unite all peoples within our nation! To denounce the evils for truth and love! To extend our reach to the stars above! Jessie! James! Team Rocket blasts off at the speed of light! Surrender now, or prepare to fight! Meowth: That's right!", p1: Pokemon.all.sample.id, p2: Pokemon.all.sample.id, p3: Pokemon.all.sample.id, p4: Pokemon.all.sample.id, p5: Pokemon.all.sample.id, p6: Pokemon.all.sample.id)
+  ash = Trainer.create(
+    name: "Ash",
+    flavor_text: "I'm having a major hat crisis!"
+  )
+  ash.pokemons = Pokemon.all.sample(6)
+  brock = Trainer.create(
+    name: "Brock",
+    flavor_text: "Hey! I know! I'll use my trusty frying pan as a drying pan!"
+  )
+  brock.pokemons = Pokemon.all.sample(6)
+  misty = Trainer.create(
+    name: "Misty",
+    flavor_text: "Pikachu! You're a Pika Pal!"
+  )
+  misty.pokemons = Pokemon.all.sample(6)
+  team_rocket = Trainer.create(
+    name: "Jessie + James",
+    flavor_text: "Prepare for trouble! And make it double! To protect the world from devestation! To Unite all peoples within our nation! To denounce the evils for truth and love! To extend our reach to the stars above! Jessie! James! Team Rocket blasts off at the speed of light! Surrender now, or prepare to fight! Meowth: That's right!"
+  )
+  team_rocket.pokemons = Pokemon.all.sample(6)
 end
